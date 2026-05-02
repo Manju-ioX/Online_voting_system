@@ -1,0 +1,588 @@
+import { useState, useEffect, useRef } from "react";
+
+/* ── Crypto Utilities (simulated AES-256 / SHA-256 display) ── */
+const toHex = (str) => Array.from(str).map(c => c.charCodeAt(0).toString(16).padStart(2,"0")).join("");
+const hashDisplay = (str) => {
+  const h = toHex(str + Date.now()).slice(0,64).padEnd(64,"a1b2c3d4e5f6");
+  return h.match(/.{1,8}/g).join(" ");
+};
+const encryptDisplay = (str) => {
+  const base = btoa(str + "AES256-SALT-ECI-2026").replace(/=/g,"");
+  return base.slice(0,48) + "...";
+};
+const generateVoterId  = () => "ECI/" + new Date().getFullYear() + "/" + Math.random().toString(36).substr(2,4).toUpperCase() + "/" + Math.floor(10000+Math.random()*90000);
+const generateReceipt  = () => "RCP-ECI-" + Date.now().toString(36).toUpperCase();
+const generateBlockHash= () => Array.from({length:16},()=>Math.floor(Math.random()*256).toString(16).padStart(2,"0")).join("");
+const generateNonce    = () => "0x" + Math.floor(Math.random()*0xffffff).toString(16).padStart(6,"0").toUpperCase();
+
+const parties = [
+  { id:1, candidate:"Narendra Modi",   party:"Bharatiya Janata Party",        abbr:"BJP", symbol:"🪷", accent:"#E65100", light:"#FFF3E0", border:"#FFB74D", seat:"Varanasi, Uttar Pradesh",   alliance:"NDA",          votes:4821 },
+  { id:2, candidate:"Rahul Gandhi",    party:"Indian National Congress",       abbr:"INC", symbol:"✋", accent:"#1B5E20", light:"#E8F5E9", border:"#66BB6A", seat:"Wayanad, Kerala",           alliance:"INDIA Alliance",votes:3976 },
+  { id:3, candidate:"Arvind Kejriwal", party:"Aam Aadmi Party",                abbr:"AAP", symbol:"🧹", accent:"#01579B", light:"#E3F2FD", border:"#42A5F5", seat:"New Delhi, Delhi",          alliance:"INDIA Alliance",votes:2134 },
+  { id:4, candidate:"Mamata Banerjee", party:"All India Trinamool Congress",   abbr:"TMC", symbol:"🌸", accent:"#0D47A1", light:"#E8EAF6", border:"#5C6BC0", seat:"Bhowanipore, West Bengal",  alliance:"INDIA Alliance",votes:1887 },
+  { id:5, candidate:"M.K. Stalin",     party:"Dravida Munnetra Kazhagam",     abbr:"DMK", symbol:"🌅", accent:"#B71C1C", light:"#FFEBEE", border:"#EF9A9A", seat:"Kolathur, Tamil Nadu",       alliance:"INDIA Alliance",votes:1542 },
+];
+
+const SCREENS = { SPLASH:"splash", LOGIN:"login", HOME:"home", VOTE:"vote", CONFIRM:"confirm", ENCRYPTING:"encrypting", SUCCESS:"success", RESULTS:"results" };
+
+/* ── Encryption Animation Component ── */
+function EncryptingScreen({ candidate, onDone }) {
+  const [step, setStep]     = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [hash, setHash]     = useState("");
+  const [block, setBlock]   = useState("");
+  const [nonce, setNonce]   = useState("");
+
+  const steps = [
+    { label:"Initialising AES-256-GCM cipher…",        icon:"🔐", pct:15  },
+    { label:"Generating ephemeral key pair (RSA-4096)…",icon:"🔑", pct:30  },
+    { label:"Encrypting ballot payload…",               icon:"📦", pct:48  },
+    { label:"Computing SHA-256 vote hash…",             icon:"#️⃣", pct:62  },
+    { label:"Broadcasting to blockchain node…",         icon:"⛓️", pct:75  },
+    { label:"Awaiting block confirmation (PoW)…",       icon:"⛏️", pct:88  },
+    { label:"Vote sealed & immutably recorded.",        icon:"✅", pct:100 },
+  ];
+
+  useEffect(() => {
+    setHash(hashDisplay(candidate?.candidate || "vote"));
+    setBlock(generateBlockHash());
+    setNonce(generateNonce());
+    let s = 0;
+    const iv = setInterval(() => {
+      s++;
+      setStep(s);
+      setProgress(steps[Math.min(s, steps.length-1)].pct);
+      if (s >= steps.length - 1) { clearInterval(iv); setTimeout(onDone, 900); }
+    }, 480);
+    return () => clearInterval(iv);
+  }, []);
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", padding:"28px 24px", background:"#fff" }}>
+      <div style={{ textAlign:"center", marginBottom:"28px" }}>
+        <div style={{ width:"72px", height:"72px", borderRadius:"20px", background:"linear-gradient(135deg,#E65100,#FF8F00)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"32px", margin:"0 auto 14px", boxShadow:"0 8px 24px rgba(230,81,0,0.25)" }}>🔒</div>
+        <h2 style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"22px", fontWeight:"800", margin:"0 0 4px" }}>Encrypting Your Vote</h2>
+        <p style={{ color:"#888", fontSize:"13px", margin:0 }}>Please do not close the app</p>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ background:"#F0F0F0", borderRadius:"99px", height:"8px", marginBottom:"28px", overflow:"hidden" }}>
+        <div style={{ height:"100%", width:`${progress}%`, background:"linear-gradient(90deg,#E65100,#FF8F00)", borderRadius:"99px", transition:"width 0.45s ease" }} />
+      </div>
+
+      {/* Steps */}
+      <div style={{ display:"flex", flexDirection:"column", gap:"10px", marginBottom:"28px" }}>
+        {steps.map((s,i) => (
+          <div key={i} style={{ display:"flex", alignItems:"center", gap:"10px", opacity: i <= step ? 1 : 0.3, transition:"opacity 0.4s" }}>
+            <div style={{ width:"28px", height:"28px", borderRadius:"8px", background: i < step ? "#E8F5E9" : i === step ? "#FFF3E0" : "#F5F5F5", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"14px", flexShrink:0, border: i < step ? "1px solid #66BB6A" : i===step ? "1px solid #FFB74D":"1px solid #E0E0E0" }}>
+              {i < step ? "✓" : s.icon}
+            </div>
+            <span style={{ fontSize:"12px", color: i < step ? "#2E7D32" : i===step ? "#E65100":"#999", fontWeight: i===step ? "700":"400" }}>{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Crypto display */}
+      <div style={{ background:"#F8F9FA", borderRadius:"16px", padding:"14px", border:"1px solid #E9ECEF" }}>
+        <div style={{ color:"#999", fontSize:"10px", letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:"8px" }}>Cryptographic Output</div>
+        <div style={{ fontFamily:"monospace", fontSize:"10px", color:"#333", lineHeight:"1.8", wordBreak:"break-all" }}>
+          <div><span style={{ color:"#888" }}>HASH:  </span><span style={{ color:"#E65100" }}>{hash}</span></div>
+          <div><span style={{ color:"#888" }}>BLOCK: </span><span style={{ color:"#1B5E20" }}>{block}</span></div>
+          <div><span style={{ color:"#888" }}>NONCE: </span><span style={{ color:"#01579B" }}>{nonce}</span></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Security Badge ── */
+function SecurityBadge({ label, value, icon, color="#E65100" }) {
+  return (
+    <div style={{ background:"#FAFAFA", border:"1px solid #EEEEEE", borderRadius:"12px", padding:"10px 12px", display:"flex", alignItems:"center", gap:"10px" }}>
+      <div style={{ width:"32px", height:"32px", borderRadius:"9px", background:`${color}15`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"15px", flexShrink:0 }}>{icon}</div>
+      <div>
+        <div style={{ color:"#999", fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.08em" }}>{label}</div>
+        <div style={{ color:"#333", fontSize:"12px", fontWeight:"700", marginTop:"1px" }}>{value}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Main App ── */
+export default function App() {
+  const [screen,     setScreen]     = useState(SCREENS.SPLASH);
+  const [selected,   setSelected]   = useState(null);
+  const [hasVoted,   setHasVoted]   = useState(false);
+  const [voteCounts, setVoteCounts] = useState(Object.fromEntries(parties.map(p=>[p.id,p.votes])));
+  const [voterId]  = useState(generateVoterId());
+  const [receiptId,  setReceiptId]  = useState("");
+  const [encPayload, setEncPayload] = useState("");
+  const [voteHash,   setVoteHash]   = useState("");
+  const [blockHash,  setBlockHash]  = useState("");
+  const [voteTime,   setVoteTime]   = useState("");
+  const [phone,      setPhone]      = useState("");
+  const [otpSent,    setOtpSent]    = useState(false);
+  const [otp,        setOtp]        = useState(["","","","","",""]);
+  const [splashStep, setSplashStep] = useState(0);
+
+  const totalVotes = Object.values(voteCounts).reduce((a,b)=>a+b,0);
+  const getParty = id => parties.find(p=>p.id===id);
+  const winner = [...parties].sort((a,b)=>voteCounts[b.id]-voteCounts[a.id])[0];
+
+  useEffect(()=>{
+    const t1 = setTimeout(()=>setSplashStep(1),500);
+    const t2 = setTimeout(()=>setSplashStep(2),1200);
+    const t3 = setTimeout(()=>setSplashStep(3),2000);
+    const t4 = setTimeout(()=>setScreen(SCREENS.LOGIN),2900);
+    return ()=>{ clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);clearTimeout(t4); };
+  },[]);
+
+  const handleVoteSubmit = () => {
+    const rid = generateReceipt();
+    const bh  = generateBlockHash();
+    const ep  = encryptDisplay(getParty(selected)?.abbr + voterId);
+    const vh  = hashDisplay(getParty(selected)?.abbr + rid);
+    setReceiptId(rid); setBlockHash(bh); setEncPayload(ep); setVoteHash(vh);
+    setVoteTime(new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata"}));
+    setVoteCounts(prev=>({...prev,[selected]:prev[selected]+1}));
+    setHasVoted(true);
+    setScreen(SCREENS.ENCRYPTING);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#F2F4F7", display:"flex", justifyContent:"center", alignItems:"center", padding:"0", fontFamily:"'DM Sans','Segoe UI',sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        ::-webkit-scrollbar{width:0;}
+        input::placeholder{color:#BDBDBD;}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+        @keyframes scaleIn{from{transform:scale(0.6);opacity:0}to{transform:scale(1);opacity:1}}
+        @keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:0.4}}
+        .fade-up{animation:fadeUp 0.5s ease both;}
+        .btn{transition:all 0.18s ease;cursor:pointer;}
+        .btn:active{transform:scale(0.97);}
+        .card{transition:all 0.22s cubic-bezier(0.4,0,0.2,1);}
+        .card:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(0,0,0,0.10)!important;}
+        .otp-box{width:44px;height:52px;border-radius:12px;border:1.5px solid #E0E0E0;background:#FAFAFA;text-align:center;font-size:22px;font-weight:700;color:#1a1a2e;outline:none;font-family:inherit;}
+        .otp-box:focus{border-color:#E65100;box-shadow:0 0 0 3px rgba(230,81,0,0.12);background:#fff;}
+      `}</style>
+
+      <div style={{ width:"100%", maxWidth:"400px", minHeight:"100vh", maxHeight:"900px", background:"#fff", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 20px 80px rgba(0,0,0,0.12)", position:"relative" }}>
+
+        {/* ── SPLASH ── */}
+        {screen===SCREENS.SPLASH && (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:"linear-gradient(160deg,#FFFFFF 0%,#FFF8F3 100%)", padding:"32px" }}>
+            <div style={{ opacity: splashStep>=1?1:0, transform: splashStep>=1?"scale(1)":"scale(0.8)", transition:"all 0.5s ease", textAlign:"center" }}>
+              <div style={{ fontSize:"64px", marginBottom:"4px" }}>🇮🇳</div>
+            </div>
+            <div style={{ opacity: splashStep>=2?1:0, transition:"opacity 0.5s 0.1s ease", textAlign:"center", marginTop:"12px" }}>
+              <div style={{ color:"#E65100", fontSize:"11px", letterSpacing:"0.35em", fontWeight:"700", textTransform:"uppercase", marginBottom:"8px" }}>Election Commission of India</div>
+              <h1 style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"40px", fontWeight:"900", lineHeight:1.1 }}>e-Matdan</h1>
+              <p style={{ color:"#9E9E9E", fontSize:"12px", letterSpacing:"0.18em", marginTop:"6px" }}>SECURE DIGITAL VOTING SYSTEM</p>
+            </div>
+            <div style={{ opacity: splashStep>=3?1:0, transition:"opacity 0.5s ease", marginTop:"48px", display:"flex", gap:"12px", alignItems:"center" }}>
+              <div style={{ width:"32px", height:"2px", background:"#E65100", borderRadius:"2px" }}/>
+              <span style={{ color:"#BDBDBD", fontSize:"11px", letterSpacing:"0.1em" }}>INITIALISING SECURE SESSION</span>
+              <div style={{ width:"32px", height:"2px", background:"#E65100", borderRadius:"2px" }}/>
+            </div>
+          </div>
+        )}
+
+        {/* ── LOGIN ── */}
+        {screen===SCREENS.LOGIN && (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", background:"#fff", animation:"fadeIn 0.4s ease" }}>
+            {/* Header strip */}
+            <div style={{ background:"linear-gradient(135deg,#E65100,#FF8F00)", padding:"36px 24px 28px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"12px", marginBottom:"16px" }}>
+                <span style={{ fontSize:"28px" }}>🇮🇳</span>
+                <div>
+                  <div style={{ color:"rgba(255,255,255,0.75)", fontSize:"10px", letterSpacing:"0.2em", textTransform:"uppercase" }}>Election Commission of India</div>
+                  <div style={{ fontFamily:"'Playfair Display',serif", color:"#fff", fontSize:"20px", fontWeight:"800" }}>e-Matdan Portal</div>
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+                {["🔒 256-bit Encrypted","⛓️ Blockchain Verified","🛡️ ECI Certified"].map(b=>(
+                  <div key={b} style={{ background:"rgba(255,255,255,0.18)", borderRadius:"20px", padding:"4px 10px", color:"#fff", fontSize:"10px", fontWeight:"600" }}>{b}</div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ flex:1, padding:"28px 24px" }}>
+              {!otpSent ? (
+                <div style={{ animation:"fadeUp 0.4s ease" }}>
+                  <h3 style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"20px", fontWeight:"800", marginBottom:"6px" }}>Verify Identity</h3>
+                  <p style={{ color:"#9E9E9E", fontSize:"13px", marginBottom:"24px", lineHeight:"1.6" }}>Enter your registered mobile number to receive a secure OTP.</p>
+
+                  <label style={{ color:"#666", fontSize:"11px", letterSpacing:"0.1em", textTransform:"uppercase", display:"block", marginBottom:"8px" }}>Mobile Number</label>
+                  <div style={{ display:"flex", gap:"10px", marginBottom:"20px" }}>
+                    <div style={{ background:"#F5F5F5", border:"1.5px solid #E0E0E0", borderRadius:"12px", padding:"13px 14px", color:"#333", fontSize:"14px", fontWeight:"600", whiteSpace:"nowrap" }}>🇮🇳 +91</div>
+                    <input type="tel" maxLength={10} value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,""))} placeholder="10-digit mobile number"
+                      style={{ flex:1, background:"#FAFAFA", border:"1.5px solid #E0E0E0", borderRadius:"12px", padding:"13px 16px", color:"#1a1a2e", fontSize:"15px", outline:"none", fontFamily:"inherit" }}/>
+                  </div>
+
+                  <div style={{ background:"#F8F9FA", border:"1px solid #E9ECEF", borderRadius:"12px", padding:"12px 14px", marginBottom:"24px", display:"flex", gap:"10px" }}>
+                    <span style={{ fontSize:"18px" }}>🔒</span>
+                    <p style={{ color:"#888", fontSize:"12px", lineHeight:"1.65" }}>Your data is protected under the IT Act, 2000. End-to-end AES-256 encrypted. No data is stored on device.</p>
+                  </div>
+
+                  <button onClick={()=>phone.length===10&&setOtpSent(true)} className="btn" style={{
+                    width:"100%", padding:"17px", borderRadius:"14px", border:"none",
+                    background: phone.length===10 ? "linear-gradient(135deg,#E65100,#FF8F00)":"#F0F0F0",
+                    color: phone.length===10 ? "#fff":"#BDBDBD", fontSize:"15px", fontWeight:"700",
+                    boxShadow: phone.length===10 ? "0 6px 20px rgba(230,81,0,0.3)":"none",
+                  }}>Send OTP →</button>
+                </div>
+              ) : (
+                <div style={{ animation:"fadeUp 0.4s ease" }}>
+                  <h3 style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"20px", fontWeight:"800", marginBottom:"6px" }}>Enter OTP</h3>
+                  <p style={{ color:"#9E9E9E", fontSize:"13px", marginBottom:"24px" }}>Sent to +91 {phone}</p>
+
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"20px" }}>
+                    {otp.map((d,i)=>(
+                      <input key={i} id={`o${i}`} className="otp-box" type="tel" maxLength={1} value={d}
+                        onChange={e=>{ const v=e.target.value.replace(/\D/g,""); const n=[...otp];n[i]=v;setOtp(n); if(v&&i<5)document.getElementById(`o${i+1}`)?.focus(); }}
+                        onKeyDown={e=>{ if(e.key==="Backspace"&&!otp[i]&&i>0)document.getElementById(`o${i-1}`)?.focus(); }}/>
+                    ))}
+                  </div>
+
+                  <p style={{ color:"#BDBDBD", fontSize:"11px", textAlign:"center", marginBottom:"24px" }}>Enter any 6 digits (demo mode)</p>
+
+                  <button onClick={()=>otp.every(d=>d)&&setScreen(SCREENS.HOME)} className="btn" style={{
+                    width:"100%", padding:"17px", borderRadius:"14px", border:"none",
+                    background: otp.every(d=>d) ? "linear-gradient(135deg,#E65100,#FF8F00)":"#F0F0F0",
+                    color: otp.every(d=>d) ? "#fff":"#BDBDBD", fontSize:"15px", fontWeight:"700",
+                    boxShadow: otp.every(d=>d) ? "0 6px 20px rgba(230,81,0,0.3)":"none",
+                  }}>Verify &amp; Continue</button>
+                  <button onClick={()=>setOtpSent(false)} style={{ width:"100%",padding:"13px",background:"none",border:"none",color:"#E65100",fontSize:"13px",cursor:"pointer",marginTop:"8px",fontWeight:"600" }}>← Change Number</button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── HOME ── */}
+        {screen===SCREENS.HOME && (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", background:"#F7F8FA", animation:"fadeIn 0.35s ease" }}>
+            {/* Topbar */}
+            <div style={{ background:"#fff", padding:"18px 20px 0", borderBottom:"1px solid #F0F0F0", boxShadow:"0 1px 8px rgba(0,0,0,0.04)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"14px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                  <span style={{ fontSize:"22px" }}>🇮🇳</span>
+                  <div>
+                    <div style={{ color:"#BDBDBD", fontSize:"10px", letterSpacing:"0.15em", textTransform:"uppercase" }}>ECI · e-Matdan</div>
+                    <div style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"16px", fontWeight:"800" }}>Dashboard</div>
+                  </div>
+                </div>
+                <div style={{ background:"#FFF3E0", border:"1px solid #FFCC80", borderRadius:"20px", padding:"5px 12px", display:"flex", alignItems:"center", gap:"6px" }}>
+                  <div style={{ width:"7px", height:"7px", borderRadius:"50%", background:"#E65100", animation:"blink 1.4s infinite" }}/>
+                  <span style={{ color:"#E65100", fontSize:"11px", fontWeight:"700" }}>LIVE</span>
+                </div>
+              </div>
+              <div style={{ display:"flex" }}>
+                {["Home","Candidates","Results"].map((t,i)=>(
+                  <button key={t} onClick={()=>i===1?setScreen(SCREENS.VOTE):i===2?setScreen(SCREENS.RESULTS):null} style={{ flex:1,padding:"11px 0",background:"none",border:"none",borderBottom: i===0?"2.5px solid #E65100":"2.5px solid transparent",color: i===0?"#E65100":"#9E9E9E",fontSize:"13px",fontWeight: i===0?"700":"500",cursor:"pointer" }}>{t}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ flex:1, overflowY:"auto", padding:"18px 18px 24px" }}>
+              {/* Election Banner */}
+              <div style={{ background:"linear-gradient(135deg,#E65100,#FF8F00)", borderRadius:"20px", padding:"20px", marginBottom:"14px", position:"relative", overflow:"hidden" }}>
+                <div style={{ position:"absolute", right:"-16px", top:"-16px", fontSize:"90px", opacity:0.08 }}>🗳️</div>
+                <div style={{ color:"rgba(255,255,255,0.75)", fontSize:"10px", letterSpacing:"0.15em", textTransform:"uppercase", marginBottom:"5px" }}>General Election 2026</div>
+                <div style={{ fontFamily:"'Playfair Display',serif", color:"#fff", fontSize:"19px", fontWeight:"800", marginBottom:"14px", lineHeight:1.3 }}>Lok Sabha Elections — Phase 3</div>
+                <div style={{ display:"flex", gap:"14px" }}>
+                  {[{l:"Closes",v:"15 May 2026"},{l:"Votes",v:totalVotes.toLocaleString("en-IN")},{l:"Seats",v:"543"}].map(x=>(
+                    <div key={x.l} style={{ flex:1 }}>
+                      <div style={{ color:"rgba(255,255,255,0.6)", fontSize:"9px", textTransform:"uppercase", letterSpacing:"0.1em" }}>{x.l}</div>
+                      <div style={{ color:"#fff", fontSize:"13px", fontWeight:"700" }}>{x.v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Voter Card */}
+              <div style={{ background:"#fff", border:"1px solid #F0F0F0", borderRadius:"18px", padding:"16px", marginBottom:"14px", boxShadow:"0 2px 12px rgba(0,0,0,0.05)" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
+                  <div style={{ color:"#9E9E9E", fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.12em" }}>Voter Card</div>
+                  <div style={{ width:"32px", height:"32px", borderRadius:"9px", background:"#FFF3E0", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"16px" }}>🪪</div>
+                </div>
+                <div style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"15px", fontWeight:"700", marginBottom:"12px" }}>{voterId}</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
+                  {[{l:"Constituency",v:"New Delhi — 12"},{l:"State",v:"Delhi"},{l:"Phase",v:"Phase 3 of 7"},{l:"Status",v:hasVoted?"✓ Voted":"⏳ Pending"}].map(x=>(
+                    <div key={x.l} style={{ background:"#F8F9FA", borderRadius:"10px", padding:"9px 11px" }}>
+                      <div style={{ color:"#BDBDBD", fontSize:"10px" }}>{x.l}</div>
+                      <div style={{ color: x.l==="Status"&&hasVoted?"#2E7D32":x.l==="Status"?"#E65100":"#333", fontSize:"12px", fontWeight:"700", marginTop:"2px" }}>{x.v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Security row */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"14px" }}>
+                <SecurityBadge label="Encryption" value="AES-256-GCM" icon="🔐" color="#E65100"/>
+                <SecurityBadge label="Blockchain" value="Hyperledger" icon="⛓️" color="#1B5E20"/>
+                <SecurityBadge label="Auth Layer" value="RSA-4096" icon="🔑" color="#01579B"/>
+                <SecurityBadge label="Protocol" value="TLS 1.3" icon="🛡️" color="#4A148C"/>
+              </div>
+
+              {/* CTA */}
+              <div style={{ display:"flex", gap:"10px", marginBottom:"14px" }}>
+                <button onClick={()=>!hasVoted&&setScreen(SCREENS.VOTE)} className="btn" style={{
+                  flex:2, padding:"17px", borderRadius:"16px", border:"none",
+                  background: hasVoted?"#F0F0F0":"linear-gradient(135deg,#E65100,#FF8F00)",
+                  color: hasVoted?"#BDBDBD":"#fff", fontSize:"15px", fontWeight:"700",
+                  boxShadow: hasVoted?"none":"0 6px 22px rgba(230,81,0,0.35)",
+                  cursor: hasVoted?"not-allowed":"pointer",
+                }}>
+                  {hasVoted?"✓ Vote Submitted":"🗳️  Cast Your Vote"}
+                </button>
+                <button onClick={()=>setScreen(SCREENS.RESULTS)} className="btn" style={{ flex:1,padding:"17px",borderRadius:"16px",border:"1.5px solid #E0E0E0",background:"#fff",color:"#333",fontSize:"13px",fontWeight:"600",cursor:"pointer" }}>📊 Live</button>
+              </div>
+
+              {/* Leading widget */}
+              <div style={{ background:"#fff", border:"1px solid #F0F0F0", borderRadius:"18px", padding:"16px", boxShadow:"0 2px 12px rgba(0,0,0,0.04)" }}>
+                <div style={{ color:"#9E9E9E", fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:"12px" }}>Currently Leading</div>
+                <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+                  <div style={{ width:"44px", height:"44px", borderRadius:"12px", background:winner.light, border:`1px solid ${winner.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"22px" }}>{winner.symbol}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ color:"#1a1a2e", fontWeight:"700", fontSize:"15px" }}>{winner.abbr}</div>
+                    <div style={{ color:"#9E9E9E", fontSize:"11px" }}>{winner.candidate}</div>
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ color:winner.accent, fontSize:"24px", fontWeight:"900", fontFamily:"'Playfair Display',serif", lineHeight:1 }}>{Math.round((voteCounts[winner.id]/totalVotes)*100)}%</div>
+                    <div style={{ color:"#BDBDBD", fontSize:"11px" }}>{voteCounts[winner.id].toLocaleString("en-IN")} votes</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── VOTE ── */}
+        {screen===SCREENS.VOTE && (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", background:"#F7F8FA", animation:"fadeIn 0.3s ease" }}>
+            <div style={{ background:"#fff", padding:"18px 20px 16px", borderBottom:"1px solid #F0F0F0", boxShadow:"0 1px 8px rgba(0,0,0,0.04)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+                <button onClick={()=>{setScreen(SCREENS.HOME);setSelected(null);}} style={{ background:"#F5F5F5",border:"none",borderRadius:"11px",width:"38px",height:"38px",fontSize:"17px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#333" }}>←</button>
+                <div>
+                  <h2 style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"19px", fontWeight:"800", margin:0 }}>Select Candidate</h2>
+                  <p style={{ color:"#9E9E9E", margin:0, fontSize:"12px" }}>Lok Sabha General Election 2026</p>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ flex:1, overflowY:"auto", padding:"14px 16px" }}>
+              <div style={{ background:"#FFFDE7", border:"1px solid #FFF176", borderRadius:"12px", padding:"11px 13px", marginBottom:"14px", display:"flex", gap:"9px" }}>
+                <span>⚠️</span>
+                <p style={{ color:"#795548", fontSize:"12px", margin:0, lineHeight:"1.65" }}>You may only vote once. This is final and cannot be changed after submission.</p>
+              </div>
+
+              {parties.map((p,idx)=>(
+                <div key={p.id} className="card" onClick={()=>setSelected(p.id)} style={{
+                  marginBottom:"10px", padding:"15px 16px", borderRadius:"18px", cursor:"pointer",
+                  border: selected===p.id ? `2px solid ${p.accent}` : "2px solid transparent",
+                  background: selected===p.id ? p.light : "#fff",
+                  boxShadow: selected===p.id ? `0 4px 20px ${p.accent}20` : "0 1px 6px rgba(0,0,0,0.06)",
+                  animation:`fadeUp 0.4s ${idx*0.07}s ease both`,
+                }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:"13px" }}>
+                    <div style={{ width:"52px", height:"52px", borderRadius:"15px", background: selected===p.id ? p.light:"#F5F5F5", border:`1.5px solid ${selected===p.id?p.border:"#E0E0E0"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"24px", flexShrink:0 }}>{p.symbol}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                        <div>
+                          <div style={{ color:"#1a1a2e", fontWeight:"700", fontSize:"15px" }}>{p.candidate}</div>
+                          <div style={{ color:p.accent, fontSize:"12px", fontWeight:"700", marginTop:"2px" }}>{p.abbr} · {p.alliance}</div>
+                          <div style={{ color:"#BDBDBD", fontSize:"11px", marginTop:"2px" }}>📍 {p.seat}</div>
+                        </div>
+                        <div style={{ width:"22px", height:"22px", borderRadius:"50%", border: selected===p.id ? `2px solid ${p.accent}`:"2px solid #E0E0E0", background: selected===p.id ? p.accent:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:"2px" }}>
+                          {selected===p.id && <span style={{ color:"#fff", fontSize:"12px", fontWeight:"900" }}>✓</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background:"#fff", padding:"14px 16px 24px", borderTop:"1px solid #F0F0F0" }}>
+              <button onClick={()=>selected&&setScreen(SCREENS.CONFIRM)} className="btn" style={{
+                width:"100%", padding:"17px", borderRadius:"14px", border:"none",
+                background: selected?"linear-gradient(135deg,#E65100,#FF8F00)":"#F0F0F0",
+                color: selected?"#fff":"#BDBDBD", fontSize:"15px", fontWeight:"700",
+                boxShadow: selected?"0 6px 22px rgba(230,81,0,0.32)":"none",
+                cursor: selected?"pointer":"not-allowed",
+              }}>Proceed to Review →</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── CONFIRM ── */}
+        {screen===SCREENS.CONFIRM && selected && (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", background:"#F7F8FA", animation:"fadeIn 0.3s ease" }}>
+            <div style={{ background:"#fff", padding:"18px 20px 16px", borderBottom:"1px solid #F0F0F0", boxShadow:"0 1px 8px rgba(0,0,0,0.04)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+                <button onClick={()=>setScreen(SCREENS.VOTE)} style={{ background:"#F5F5F5",border:"none",borderRadius:"11px",width:"38px",height:"38px",fontSize:"17px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#333" }}>←</button>
+                <div>
+                  <h2 style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"19px", fontWeight:"800", margin:0 }}>Review &amp; Submit</h2>
+                  <p style={{ color:"#9E9E9E", margin:0, fontSize:"12px" }}>Final confirmation before encryption</p>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ flex:1, overflowY:"auto", padding:"24px 20px" }}>
+              {/* Candidate card */}
+              <div style={{ background:"#fff", border:`1.5px solid ${getParty(selected).border}`, borderRadius:"20px", padding:"20px", marginBottom:"16px", textAlign:"center", boxShadow:`0 4px 20px ${getParty(selected).accent}15` }}>
+                <div style={{ width:"80px", height:"80px", borderRadius:"22px", background:getParty(selected).light, border:`2px solid ${getParty(selected).border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"38px", margin:"0 auto 14px", boxShadow:`0 8px 24px ${getParty(selected).accent}25` }}>{getParty(selected).symbol}</div>
+                <h3 style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"22px", fontWeight:"800", marginBottom:"4px" }}>{getParty(selected).candidate}</h3>
+                <div style={{ color:getParty(selected).accent, fontSize:"13px", fontWeight:"700", marginBottom:"3px" }}>{getParty(selected).abbr} — {getParty(selected).alliance}</div>
+                <div style={{ color:"#9E9E9E", fontSize:"12px" }}>📍 {getParty(selected).seat}</div>
+              </div>
+
+              {/* Details */}
+              <div style={{ background:"#fff", border:"1px solid #F0F0F0", borderRadius:"18px", padding:"16px", marginBottom:"16px" }}>
+                <div style={{ color:"#9E9E9E", fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:"12px" }}>Ballot Details</div>
+                {[{l:"Party",v:getParty(selected).party},{l:"Voter ID",v:voterId},{l:"Constituency",v:"New Delhi — 12"},{l:"Election Type",v:"Lok Sabha 2026"},{l:"Encryption",v:"AES-256-GCM"},{l:"Auth",v:"OTP + Biometric"}].map(x=>(
+                  <div key={x.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #F5F5F5" }}>
+                    <span style={{ color:"#9E9E9E", fontSize:"12px" }}>{x.l}</span>
+                    <span style={{ color: x.l==="Encryption"||x.l==="Auth" ? "#2E7D32":"#1a1a2e", fontSize:"12px", fontWeight:"700", maxWidth:"55%", textAlign:"right" }}>{x.v}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background:"#FFF3E0", border:"1px solid #FFCC80", borderRadius:"14px", padding:"13px 14px", display:"flex", gap:"10px", marginBottom:"20px" }}>
+                <span>⚠️</span>
+                <p style={{ color:"#795548", fontSize:"12px", margin:0, lineHeight:"1.65" }}>Submitting this vote is irreversible. It will be encrypted with AES-256 and recorded on the ECI blockchain permanently.</p>
+              </div>
+            </div>
+
+            <div style={{ background:"#fff", padding:"14px 20px 24px", borderTop:"1px solid #F0F0F0", display:"flex", gap:"10px" }}>
+              <button onClick={()=>setScreen(SCREENS.VOTE)} className="btn" style={{ flex:1,padding:"16px",borderRadius:"13px",border:"1.5px solid #E0E0E0",background:"#fff",color:"#333",fontSize:"14px",fontWeight:"600",cursor:"pointer" }}>← Change</button>
+              <button onClick={handleVoteSubmit} className="btn" style={{ flex:2,padding:"16px",borderRadius:"13px",border:"none",background:"linear-gradient(135deg,#E65100,#FF8F00)",color:"#fff",fontSize:"15px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 22px rgba(230,81,0,0.32)" }}>Submit &amp; Encrypt 🔒</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── ENCRYPTING ── */}
+        {screen===SCREENS.ENCRYPTING && (
+          <EncryptingScreen candidate={getParty(selected)} onDone={()=>setScreen(SCREENS.SUCCESS)}/>
+        )}
+
+        {/* ── SUCCESS ── */}
+        {screen===SCREENS.SUCCESS && (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", background:"#fff", animation:"fadeIn 0.4s ease" }}>
+            <div style={{ background:"linear-gradient(135deg,#1B5E20,#2E7D32)", padding:"36px 24px 28px", textAlign:"center" }}>
+              <div style={{ width:"80px", height:"80px", borderRadius:"50%", background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"38px", margin:"0 auto 14px", animation:"scaleIn 0.5s ease" }}>✅</div>
+              <div style={{ color:"rgba(255,255,255,0.75)", fontSize:"11px", letterSpacing:"0.2em", textTransform:"uppercase", marginBottom:"6px" }}>Vote Successfully Recorded</div>
+              <h2 style={{ fontFamily:"'Playfair Display',serif", color:"#fff", fontSize:"26px", fontWeight:"800", marginBottom:"4px" }}>धन्यवाद!</h2>
+              <p style={{ color:"rgba(255,255,255,0.75)", fontSize:"13px" }}>Thank you for participating in India's democracy.</p>
+            </div>
+
+            <div style={{ flex:1, overflowY:"auto", padding:"22px 20px" }}>
+              {/* Receipt */}
+              <div style={{ background:"#F8F9FA", border:"1px solid #E9ECEF", borderRadius:"18px", padding:"18px", marginBottom:"14px" }}>
+                <div style={{ color:"#9E9E9E", fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:"12px" }}>Official Vote Receipt</div>
+                {[{l:"Voted For",v:getParty(selected)?.candidate},{l:"Party",v:getParty(selected)?.abbr},{l:"Receipt No.",v:receiptId},{l:"Date & Time",v:voteTime},{l:"ECI Status",v:"✓ Blockchain Confirmed"}].map(x=>(
+                  <div key={x.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #F0F0F0" }}>
+                    <span style={{ color:"#9E9E9E", fontSize:"12px" }}>{x.l}</span>
+                    <span style={{ color: x.l==="ECI Status"?"#2E7D32":"#1a1a2e", fontSize:"12px", fontWeight:"700", maxWidth:"60%", textAlign:"right" }}>{x.v}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Crypto proof */}
+              <div style={{ background:"#F8F9FA", border:"1px solid #E9ECEF", borderRadius:"18px", padding:"16px", marginBottom:"14px" }}>
+                <div style={{ color:"#9E9E9E", fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.12em", marginBottom:"10px" }}>Cryptographic Proof</div>
+                {[{l:"Encrypted Payload",v:encPayload,c:"#E65100"},{l:"Vote Hash (SHA-256)",v:voteHash.slice(0,32)+"…",c:"#1B5E20"},{l:"Block Hash",v:blockHash,c:"#01579B"}].map(x=>(
+                  <div key={x.l} style={{ marginBottom:"8px" }}>
+                    <div style={{ color:"#9E9E9E", fontSize:"10px", marginBottom:"3px" }}>{x.l}</div>
+                    <div style={{ fontFamily:"monospace", fontSize:"10px", color:x.c, wordBreak:"break-all", background:"#fff", padding:"8px 10px", borderRadius:"8px", border:"1px solid #EEEEEE" }}>{x.v}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display:"flex", gap:"10px" }}>
+                <button onClick={()=>setScreen(SCREENS.HOME)} className="btn" style={{ flex:1,padding:"15px",borderRadius:"13px",border:"1.5px solid #E0E0E0",background:"#fff",color:"#333",fontSize:"13px",fontWeight:"600",cursor:"pointer" }}>Home</button>
+                <button onClick={()=>setScreen(SCREENS.RESULTS)} className="btn" style={{ flex:2,padding:"15px",borderRadius:"13px",border:"none",background:"linear-gradient(135deg,#1B5E20,#2E7D32)",color:"#fff",fontSize:"14px",fontWeight:"700",cursor:"pointer",boxShadow:"0 6px 20px rgba(27,94,32,0.3)" }}>View Results 📊</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── RESULTS ── */}
+        {screen===SCREENS.RESULTS && (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", background:"#F7F8FA", animation:"fadeIn 0.3s ease" }}>
+            <div style={{ background:"#fff", padding:"18px 20px 16px", borderBottom:"1px solid #F0F0F0", boxShadow:"0 1px 8px rgba(0,0,0,0.04)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
+                <button onClick={()=>setScreen(SCREENS.HOME)} style={{ background:"#F5F5F5",border:"none",borderRadius:"11px",width:"38px",height:"38px",fontSize:"17px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#333" }}>←</button>
+                <div style={{ flex:1 }}>
+                  <h2 style={{ fontFamily:"'Playfair Display',serif", color:"#1a1a2e", fontSize:"19px", fontWeight:"800", margin:0 }}>Live Results</h2>
+                  <p style={{ color:"#9E9E9E", margin:0, fontSize:"12px" }}>{totalVotes.toLocaleString("en-IN")} total votes cast</p>
+                </div>
+                <div style={{ background:"#FFF3E0", border:"1px solid #FFCC80", borderRadius:"20px", padding:"5px 12px", display:"flex", alignItems:"center", gap:"6px" }}>
+                  <div style={{ width:"7px", height:"7px", borderRadius:"50%", background:"#E65100", animation:"blink 1.4s infinite" }}/>
+                  <span style={{ color:"#E65100", fontSize:"11px", fontWeight:"700" }}>LIVE</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ flex:1, overflowY:"auto", padding:"14px 16px 24px" }}>
+              {/* Leader banner */}
+              <div style={{ background:`linear-gradient(135deg,${winner.accent},${winner.accent}cc)`, borderRadius:"18px", padding:"16px", marginBottom:"14px", display:"flex", alignItems:"center", gap:"13px" }}>
+                <div style={{ width:"50px", height:"50px", borderRadius:"14px", background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"24px" }}>{winner.symbol}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ color:"rgba(255,255,255,0.7)", fontSize:"10px", textTransform:"uppercase", letterSpacing:"0.1em" }}>Currently Leading</div>
+                  <div style={{ color:"#fff", fontWeight:"800", fontSize:"16px" }}>{winner.abbr}</div>
+                  <div style={{ color:"rgba(255,255,255,0.7)", fontSize:"12px" }}>{winner.candidate}</div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ color:"#fff", fontSize:"30px", fontWeight:"900", fontFamily:"'Playfair Display',serif", lineHeight:1 }}>{Math.round((voteCounts[winner.id]/totalVotes)*100)}%</div>
+                  <div style={{ color:"rgba(255,255,255,0.6)", fontSize:"11px" }}>{voteCounts[winner.id].toLocaleString("en-IN")}</div>
+                </div>
+              </div>
+
+              {[...parties].sort((a,b)=>voteCounts[b.id]-voteCounts[a.id]).map((p,i)=>{
+                const count=voteCounts[p.id];
+                const pct=Math.round((count/totalVotes)*100);
+                return (
+                  <div key={p.id} style={{ background:"#fff", border:"1px solid #F0F0F0", borderRadius:"16px", padding:"14px 16px", marginBottom:"10px", boxShadow:"0 1px 6px rgba(0,0,0,0.05)", animation:`fadeUp 0.4s ${i*0.07}s ease both` }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"11px", marginBottom:"10px" }}>
+                      <div style={{ width:"42px", height:"42px", borderRadius:"12px", background:p.light, border:`1.5px solid ${p.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"20px", flexShrink:0 }}>{p.symbol}</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <div>
+                            <div style={{ color:"#1a1a2e", fontWeight:"700", fontSize:"14px" }}>{p.abbr}</div>
+                            <div style={{ color:"#9E9E9E", fontSize:"11px" }}>{p.candidate}</div>
+                          </div>
+                          <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                            {i===0&&<span style={{ background:p.light, color:p.accent, fontSize:"9px", padding:"3px 8px", borderRadius:"20px", fontWeight:"800", border:`1px solid ${p.border}` }}>LEADING</span>}
+                            <span style={{ color:p.accent, fontSize:"20px", fontWeight:"900", fontFamily:"'Playfair Display',serif" }}>{pct}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ background:"#F5F5F5", borderRadius:"6px", height:"7px", overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,${p.accent},${p.accent}aa)`, borderRadius:"6px", transition:"width 1.2s cubic-bezier(0.4,0,0.2,1)" }}/>
+                    </div>
+                    <div style={{ color:"#BDBDBD", fontSize:"11px", marginTop:"5px", textAlign:"right" }}>{count.toLocaleString("en-IN")} votes</div>
+                  </div>
+                );
+              })}
+
+              <div style={{ background:"#fff", border:"1px solid #F0F0F0", borderRadius:"14px", padding:"13px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span style={{ color:"#9E9E9E", fontSize:"13px" }}>Total Votes Cast</span>
+                <span style={{ color:"#1a1a2e", fontWeight:"900", fontSize:"18px", fontFamily:"'Playfair Display',serif" }}>{totalVotes.toLocaleString("en-IN")}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{ height:"6px", background:"#fff" }}/>
+      </div>
+    </div>
+  );
+}
